@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GoalTrack Admin</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:#0a0e1a;color:#fff}
+#login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.login-card{width:100%;max-width:340px;text-align:center}
+.login-card .icon{font-size:48px;margin-bottom:16px}
+.login-card h2{font-size:22px;font-weight:800;margin-bottom:8px}
+.login-card p{font-size:13px;color:#666;margin-bottom:24px}
+.login-input{width:100%;padding:14px 16px;border-radius:10px;border:2px solid #1a2a3a;background:#111827;color:#fff;font-size:16px;outline:none;margin-bottom:12px;text-align:center}
+.login-input:focus{border-color:#059669}
+.login-btn{width:100%;padding:14px;border-radius:10px;border:none;background:#059669;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+.login-btn:disabled{background:#1a3a2a;cursor:not-allowed}
+.login-error{color:#ef4444;font-size:13px;margin-top:8px;display:none}
+
+#adminPanel{display:none;min-height:100vh;flex-direction:column}
+#adminPanel.active{display:flex}
+.admin-header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:#059669;border-bottom:1px solid #1a3a2a;position:sticky;top:0;z-index:10}
+.admin-header .icon{font-size:24px}
+.admin-header .title{flex:1}
+.admin-header .title h2{font-size:16px;font-weight:700}
+.admin-header .title p{font-size:11px;color:#a0d4b0}
+.admin-header .logout{padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.3);border:none;color:#fff;font-size:13px;cursor:pointer}
+
+.admin-stats{display:flex;gap:8px;padding:10px 16px;background:#111827;overflow-x:auto}
+.stat-chip{padding:6px 12px;border-radius:20px;background:#1e2939;font-size:12px;white-space:nowrap}
+.stat-chip .num{font-weight:800;color:#059669}
+
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px;padding-bottom:80px}
+.msg-bubble{max-width:80%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.4;word-wrap:break-word}
+.msg-bubble.other{align-self:flex-start;background:#1e2939;color:#e5e7eb;border-bottom-left-radius:4px}
+.msg-bubble.admin{align-self:flex-end;background:#059669;color:#fff;border-bottom-right-radius:4px}
+.msg-sender{font-size:11px;font-weight:700;margin-bottom:3px;opacity:0.9}
+.msg-time{font-size:9px;opacity:0.5;margin-top:4px;text-align:right}
+.msg-image{max-width:200px;max-height:200px;border-radius:8px;cursor:pointer}
+.msg-file{display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,0.1);border-radius:8px;text-decoration:none;color:inherit;font-size:13px}
+.msg-voice{display:flex;align-items:center;gap:8px;min-width:140px}
+.voice-play{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px}
+.voice-duration{font-size:12px}
+.msg-location{display:flex;align-items:center;gap:6px;color:#4ade80;font-size:13px;text-decoration:none}
+
+.input-bar{position:fixed;bottom:0;left:0;right:0;background:#111827;border-top:1px solid #1a2a3a;padding:8px;z-index:20}
+.input-bar-inner{display:flex;align-items:flex-end;gap:6px;max-width:600px;margin:0 auto}
+.msg-input{flex:1;min-height:38px;max-height:120px;padding:10px 14px;border-radius:20px;border:1px solid #2a3a4a;background:#0b0f14;color:#fff;font-size:14px;resize:none;outline:none}
+.msg-input:focus{border-color:#059669}
+.send-btn{width:38px;height:38px;border-radius:50%;border:none;background:#059669;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+
+.img-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:100;justify-content:center;align-items:center}
+.img-modal.active{display:flex}
+.img-modal img{max-width:90%;max-height:90%;border-radius:8px}
+.img-modal .close{position:absolute;top:20px;right:20px;color:#fff;font-size:28px;cursor:pointer}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;background:#059669;color:#fff;border-radius:20px;font-size:13px;z-index:200}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <div class="icon">🔒</div>
+    <h2>Admin GoalTrack</h2>
+    <p>Entrez le mot de passe admin</p>
+    <input type="password" class="login-input" id="pwdInput" placeholder="Mot de passe..." autocomplete="off">
+    <button class="login-btn" id="pwdBtn" disabled>Se connecter</button>
+    <div class="login-error" id="pwdError">Mot de passe incorrect</div>
+  </div>
+</div>
+
+<div id="adminPanel">
+  <div class="admin-header">
+    <div class="icon">💬</div>
+    <div class="title"><h2>Admin - GoalTrack Chat</h2><p id="onlineStatus">En ligne</p></div>
+    <button class="logout" onclick="adminLogout()">Déconnexion</button>
+  </div>
+  <div class="admin-stats" id="adminStats"></div>
+  <div class="messages" id="adminMessages"></div>
+  <div class="input-bar">
+    <div class="input-bar-inner">
+      <textarea class="msg-input" id="adminInput" placeholder="Répondre..." rows="1"></textarea>
+      <button class="send-btn" onclick="adminSend()">➤</button>
+    </div>
+  </div>
+</div>
+
+<div class="img-modal" id="imgModal" onclick="closeImgModal()">
+  <span class="close">×</span>
+  <img id="imgModalSrc" src="">
+</div>
+
+<script>
+const API_URL='https://base44.app/api/apps/6a10802fc1e2a32a74055143/functions/hiddenChat';
+const ADMIN_PASSWORD='416admin';
+const ADMIN_NAME='Admin';
+let adminLoggedIn=false,messages=[],pollInterval=null;
+
+const pwdInput=document.getElementById('pwdInput'),pwdBtn=document.getElementById('pwdBtn');
+pwdInput.addEventListener('input',()=>{pwdBtn.disabled=pwdInput.value.length<3;document.getElementById('pwdError').style.display='none'});
+pwdInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&pwdInput.value.length>=3)doAdminLogin()});
+pwdBtn.addEventListener('click',doAdminLogin);
+
+function doAdminLogin(){
+  if(pwdInput.value===ADMIN_PASSWORD){
+    adminLoggedIn=true;
+    localStorage.setItem('gt_admin','1');
+    document.getElementById('login').style.display='none';
+    document.getElementById('adminPanel').classList.add('active');
+    startAdmin();
+  }else{
+    document.getElementById('pwdError').style.display='block';
+    pwdInput.value='';
+    pwdBtn.disabled=true;
+  }
+}
+
+function adminLogout(){
+  localStorage.removeItem('gt_admin');
+  adminLoggedIn=false;
+  if(pollInterval)clearInterval(pollInterval);
+  document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('login').style.display='flex';
+  pwdInput.value='';pwdBtn.disabled=true;
+}
+
+function startAdmin(){
+  fetchMessages();
+  pollInterval=setInterval(fetchMessages,2000);
+  document.getElementById('adminInput').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();adminSend()}});
+}
+
+function colorFor(name){const c=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#06b6d4','#f97316'];let h=0;for(let i=0;i<name.length;i++)h=name.charCodeAt(i)+((h<<5)-h);return c[Math.abs(h)%c.length]}
+
+async function fetchMessages(){
+  try{const res=await fetch(API_URL);const data=await res.json();if(data.messages){messages=data.messages;renderAdmin()}}catch(e){console.error(e)}
+}
+
+function renderAdmin(){
+  const c=document.getElementById('adminMessages');c.innerHTML='';
+  // Stats
+  const senders={};messages.forEach(m=>{if(m.sender!==ADMIN_NAME)senders[m.sender]=(senders[m.sender]||0)+1});
+  const statsEl=document.getElementById('adminStats');
+  statsEl.innerHTML=`<div class="stat-chip">Total: <span class="num">${messages.length}</span></div>`;
+  Object.entries(senders).forEach(([name,count])=>{statsEl.innerHTML+=`<div class="stat-chip">${name}: <span class="num">${count}</span></div>`});
+
+  if(messages.length===0){c.innerHTML='<div style="text-align:center;padding:40px;color:#555;font-size:14px">Aucun message</div>';return}
+  messages.forEach(msg=>{
+    const isAdmin=msg.sender===ADMIN_NAME;
+    const b=document.createElement('div');
+    b.className=isAdmin?'msg-bubble admin':'msg-bubble other';
+    const time=new Date(msg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    let content='';
+    if(!isAdmin)content+=`<div class="msg-sender" style="color:${colorFor(msg.sender)}">${escapeHtml(msg.sender)}</div>`;
+    if(msg.msg_type==='text')content+=`<div>${escapeHtml(msg.content)}</div>`;
+    else if(msg.msg_type==='image'&&msg.file_url){content+=`<img src="${msg.file_url}" class="msg-image" onclick="openImg('${msg.file_url}')">`;if(msg.content)content+=`<div style="margin-top:4px;font-size:12px">${escapeHtml(msg.content)}</div>`}
+    else if(msg.msg_type==='voice'&&msg.file_url)content+=`<div class="msg-voice"><button class="voice-play" onclick="playVoice('${msg.file_url}',this)">▶</button><span class="voice-duration">${msg.content||'Audio'}</span></div>`;
+    else if(msg.msg_type==='file'&&msg.file_url)content+=`<a href="${msg.file_url}" download class="msg-file">📄 ${escapeHtml(msg.content||'Fichier')}</a>`;
+    else if(msg.msg_type==='location')content+=`<a href="https://maps.google.com/?q=${msg.location_lat},${msg.location_lng}" target="_blank" class="msg-location">📍 ${msg.content||'Position'}</a>`;
+    content+=`<div class="msg-time">${time}</div>`;
+    b.innerHTML=content;c.appendChild(b);
+  });
+  c.scrollTop=c.scrollHeight;
+}
+
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+
+async function adminSend(){
+  const input=document.getElementById('adminInput'),text=input.value.trim();
+  if(!text)return;
+  input.value='';input.style.height='auto';
+  try{await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:ADMIN_NAME,content:text,msgType:'text'})});await fetchMessages()}catch(e){showToast('Erreur')}
+}
+
+function openImg(url){document.getElementById('imgModalSrc').src=url;document.getElementById('imgModal').classList.add('active')}
+function closeImgModal(){document.getElementById('imgModal').classList.remove('active')}
+function playVoice(url,btn){const a=new Audio(url);btn.textContent='⏸';a.play();a.onended=()=>btn.textContent='▶'}
+function showToast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500)}
+document.getElementById('adminInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'});
+
+if(localStorage.getItem('gt_admin')==='1'){document.getElementById('login').style.display='none';document.getElementById('adminPanel').classList.add('active');adminLoggedIn=true;startAdmin()}
+</script>
+</body>
+</html>
