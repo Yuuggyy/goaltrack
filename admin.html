@@ -75,7 +75,6 @@ button{cursor:pointer;border:none;background:none;color:inherit}
 
 .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:8px 18px;background:var(--green);color:#fff;border-radius:20px;font-size:12px;z-index:200}
 
-/* Delete confirmation modal */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;justify-content:center;align-items:center}
 .modal-bg.show{display:flex}
 .modal{background:var(--bg3);border-radius:12px;padding:24px;width:90%;max-width:280px;text-align:center}
@@ -133,7 +132,9 @@ button{cursor:pointer;border:none;background:none;color:inherit}
 const API='https://base44.app/api/apps/6a10802fc1e2a32a74055143/functions/hiddenChat';
 const PWD='416admin';const ADMIN='Admin';
 let allMsgs=[],curConv=null,curName=null,timer=null,delMsgId=null;
+let lastChatHash='',lastInboxHash='',isSending=false;
 
+// Login
 const pwd=document.getElementById('pwd'),pwdBtn=document.getElementById('pwdBtn');
 pwd.oninput=()=>{pwdBtn.disabled=pwd.value.length<3;document.getElementById('pwdErr').style.display='none'};
 pwd.onkeydown=e=>{if(e.key==='Enter'&&pwd.value.length>=3)doLogin()};
@@ -163,19 +164,43 @@ function colorFor(n){
   return c[Math.abs(h)%c.length];
 }
 
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+
 function start(){
   fetchAll();
-  timer=setInterval(fetchAll,2000);
+  timer=setInterval(fetchAll,2500);
   const inp=document.getElementById('aInput');
-  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();aSend();}};
-  inp.oninput=()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,100)+'px';};
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();aSend();}
+  });
+  inp.addEventListener('input',()=>{
+    inp.style.height='auto';
+    inp.style.height=Math.min(inp.scrollHeight,100)+'px';
+  });
 }
 
 async function fetchAll(){
   try{
     const r=await fetch(API+'?admin=1');
     const d=await r.json();
-    if(d&&d.messages){allMsgs=d.messages;drawInbox();if(curConv)drawChat();}
+    if(d&&d.messages){
+      allMsgs=d.messages;
+      // Only re-render inbox if it changed
+      const inboxHash=allMsgs.map(m=>m.id).join(',');
+      if(inboxHash!==lastInboxHash){
+        lastInboxHash=inboxHash;
+        drawInbox();
+      }
+      // Only re-render chat if messages changed AND we're in a conversation
+      if(curConv){
+        const chatMsgs=allMsgs.filter(m=>(m.conversation_id||m.sender)===curConv);
+        const chatHash=chatMsgs.map(m=>m.id+':'+m.content).join('|');
+        if(chatHash!==lastChatHash){
+          lastChatHash=chatHash;
+          drawChat();
+        }
+      }
+    }
   }catch(e){}
 }
 
@@ -197,37 +222,36 @@ function getConvs(){
   });
 }
 
-function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
-
 function drawInbox(){
   const convs=getConvs();
   const list=document.getElementById('convList');
   document.getElementById('iHeader').textContent=convs.length+' conversation'+(convs.length>1?'s':'');
-  if(!convs.length){list.innerHTML='<div class="empty">Aucune conversation</div>';return;}
+  if(!convs.length){list.innerHTML='<div class="empty">Aucune conversation</div>';window._convNames={};return;}
+  window._convNames={};
+  convs.forEach(c=>{window._convNames[c.id]=c.name;});
   list.innerHTML=convs.map(c=>{
     const last=c.msgs[c.msgs.length-1];
     const t=last?new Date(last.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
     const p=last?(last.sender===ADMIN?'Vous: ':'')+last.content.substring(0,40):'';
-    return `<div class="conv" onclick="openConv('${c.id}',this)" data-name="${esc(c.name)}"><div class="av" style="background:${colorFor(c.name)}">${c.name.charAt(0).toUpperCase()}</div><div class="ci"><div class="cn">${esc(c.name)}</div><div class="cp">${esc(p)}</div></div><div class="ct">${t}</div></div>`;
+    return `<div class="conv" onclick="openConv('${c.id}')"><div class="av" style="background:${colorFor(c.name)}">${c.name.charAt(0).toUpperCase()}</div><div class="ci"><div class="cn">${esc(c.name)}</div><div class="cp">${esc(p)}</div></div><div class="ct">${t}</div></div>`;
   }).join('');
-  // Store conv names in a map
-  window._convNames={};
-  convs.forEach(c=>{window._convNames[c.id]=c.name;});
 }
 
 function openConv(id){
   curConv=id;
   curName=window._convNames[id]||id;
+  lastChatHash=''; // Force re-render
   document.getElementById('inbox').style.display='none';
   document.getElementById('chat').classList.add('show');
   document.getElementById('backBtn').classList.add('show');
   document.getElementById('hTitle').textContent=curName;
   drawChat();
-  document.getElementById('aInput').focus();
+  // Focus input after a small delay (mobile needs this)
+  setTimeout(()=>{document.getElementById('aInput').focus();},100);
 }
 
 function goBack(){
-  curConv=null;curName=null;
+  curConv=null;curName=null;lastChatHash='';
   document.getElementById('chat').classList.remove('show');
   document.getElementById('inbox').style.display='block';
   document.getElementById('backBtn').classList.remove('show');
@@ -238,6 +262,8 @@ function drawChat(){
   const msgs=allMsgs.filter(m=>(m.conversation_id||m.sender)===curConv);
   const c=document.getElementById('aMsgs');
   if(!msgs.length){c.innerHTML='<div class="empty">Aucun message</div>';return;}
+  // Save scroll position
+  const wasAtBottom=c.scrollHeight-c.scrollTop-c.clientHeight<50;
   let html='',lastDate='';
   msgs.forEach(m=>{
     const d=new Date(m.created_at);
@@ -252,10 +278,11 @@ function drawChat(){
     html+='<div class="r '+(isAdmin?'me':'them')+'"><div class="b">'+inner+'</div></div>';
   });
   c.innerHTML=html;
-  c.scrollTop=c.scrollHeight;
+  // Restore scroll - only auto-scroll if was already at bottom
+  if(wasAtBottom){c.scrollTop=c.scrollHeight;}
 }
 
-// Delete message
+// Delete
 function askDel(msgId){
   delMsgId=msgId;
   document.getElementById('delModal').classList.add('show');
@@ -274,28 +301,43 @@ async function confirmDel(){
     const d=await r.json();
     if(d.success){
       allMsgs=allMsgs.filter(m=>m.id!==id);
+      lastChatHash=''; // Force re-render
+      lastInboxHash='';
       drawChat();
       drawInbox();
       toast('Message supprimé');
-    }else{
-      toast('Erreur suppression');
-    }
-  }catch(e){
-    toast('Erreur');
-  }
+    }else{toast('Erreur suppression');}
+  }catch(e){toast('Erreur');}
 }
 
+// Send
 async function aSend(){
+  if(isSending)return;
   const inp=document.getElementById('aInput');
   const txt=inp.value.trim();
   if(!txt||!curConv)return;
+  isSending=true;
   inp.value='';inp.style.height='auto';
+  // Optimistic: add message locally immediately
+  const tempId='tmp_'+Date.now();
+  allMsgs.push({id:tempId,sender:ADMIN,content:txt,msg_type:'text',file_url:'',location_lat:null,location_lng:null,conversation_id:curConv,created_at:new Date().toISOString()});
+  lastChatHash=''; // Force re-render
+  drawChat();
   try{
     await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       sender:ADMIN,content:txt,msgType:'text',conversationId:curConv
     })});
+    // Force refresh to get the real message with real ID
+    lastInboxHash='';
     await fetchAll();
-  }catch(e){toast('Erreur');}
+  }catch(e){
+    // Remove optimistic message on error
+    allMsgs=allMsgs.filter(m=>m.id!==tempId);
+    lastChatHash='';
+    drawChat();
+    toast('Erreur');
+  }
+  isSending=false;
 }
 
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2000);}
