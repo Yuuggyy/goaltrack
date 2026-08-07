@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
-:root{--bg:#0b141a;--bg2:#111b21;--bg3:#1f2c34;--bg4:#2a3942;--green:#128C7E;--green2:#005C4B;--green3:#075E54;--text:#e9edef;--gray:#8696a0}
+:root{--bg:#0b141a;--bg2:#111b21;--bg3:#1f2c34;--bg4:#2a3942;--green:#128C7E;--green2:#005C4B;--green3:#075E54;--text:#e9edef;--gray:#8696a0;--red:#ef4444}
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text)}
 input,textarea,button{font-family:inherit;font-size:inherit}
 button{cursor:pointer;border:none;background:none;color:inherit}
@@ -50,26 +50,41 @@ button{cursor:pointer;border:none;background:none;color:inherit}
 #chat{display:none;flex:1;flex-direction:column;height:100%}
 #chat.show{display:flex}
 .msgs{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 8px;display:flex;flex-direction:column;gap:1px;background:var(--bg)}
-.r{display:flex;width:100%}
+.r{display:flex;width:100%;margin-bottom:2px}
 .r.me{justify-content:flex-end}
 .r.them{justify-content:flex-start}
-.b{max-width:78%;padding:5px 9px 7px;border-radius:8px;font-size:14px;line-height:1.4;word-break:break-word}
+.b{max-width:78%;padding:5px 9px 7px;border-radius:8px;font-size:14px;line-height:1.4;word-break:break-word;position:relative}
 .r.me .b{background:var(--green2);border-top-right-radius:2px}
 .r.them .b{background:var(--bg3);border-top-left-radius:2px}
 .b-sender{font-size:12px;font-weight:600;margin-bottom:1px}
 .b-time{font-size:9px;color:rgba(255,255,255,0.4);float:right;margin-top:3px;margin-left:6px}
+.b-del{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;display:none;align-items:center;justify-content:center;border:2px solid var(--bg);line-height:1;z-index:5}
+.r.them .b-del{right:-6px;left:auto}
+.r.me .b-del{left:-6px;right:auto}
+.b:hover .b-del{display:flex}
 .d-sep{display:flex;justify-content:center;margin:10px 0}
 .d-sep span{background:var(--bg3);color:var(--gray);font-size:11px;padding:3px 10px;border-radius:6px}
 .empty{text-align:center;padding:30px;color:var(--gray);font-size:13px}
 
 .bar{flex-shrink:0;display:flex;align-items:flex-end;gap:6px;padding:6px 10px;background:var(--bg3)}
 .bar .wrap{flex:1;background:var(--bg4);border-radius:22px;padding:1px}
-.bar input{width:100%;min-height:38px;max-height:100px;padding:9px 12px;background:none;border:none;color:var(--text);font-size:14px;resize:none;outline:none;line-height:1.3}
-.bar input::placeholder{color:var(--gray)}
+.bar textarea{width:100%;min-height:38px;max-height:100px;padding:9px 12px;background:none;border:none;color:var(--text);font-size:14px;resize:none;outline:none;line-height:1.3}
+.bar textarea::placeholder{color:var(--gray)}
 .bar .send{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform 0.1s}
 .bar .send:active{transform:scale(0.85)}
 
 .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:8px 18px;background:var(--green);color:#fff;border-radius:20px;font-size:12px;z-index:200}
+
+/* Delete confirmation modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;justify-content:center;align-items:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--bg3);border-radius:12px;padding:24px;width:90%;max-width:280px;text-align:center}
+.modal h3{font-size:17px;font-weight:500;margin-bottom:8px}
+.modal p{font-size:13px;color:var(--gray);margin-bottom:20px}
+.modal-btns{display:flex;gap:8px}
+.modal-btns button{flex:1;padding:12px;border-radius:8px;font-size:14px;font-weight:600}
+.modal-cancel{background:var(--bg4);color:var(--text)}
+.modal-confirm{background:var(--red);color:#fff}
 </style>
 </head>
 <body>
@@ -103,12 +118,22 @@ button{cursor:pointer;border:none;background:none;color:inherit}
   </div>
 </div>
 
+<div class="modal-bg" id="delModal">
+  <div class="modal">
+    <h3>Supprimer le message</h3>
+    <p>Voulez-vous vraiment supprimer ce message ? Il sera supprimé pour tout le monde.</p>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeDelModal()">Annuler</button>
+      <button class="modal-confirm" onclick="confirmDel()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API='https://base44.app/api/apps/6a10802fc1e2a32a74055143/functions/hiddenChat';
 const PWD='416admin';const ADMIN='Admin';
-let allMsgs=[],curConv=null,curName=null,timer=null;
+let allMsgs=[],curConv=null,curName=null,timer=null,delMsgId=null;
 
-// Login
 const pwd=document.getElementById('pwd'),pwdBtn=document.getElementById('pwdBtn');
 pwd.oninput=()=>{pwdBtn.disabled=pwd.value.length<3;document.getElementById('pwdErr').style.display='none'};
 pwd.onkeydown=e=>{if(e.key==='Enter'&&pwd.value.length>=3)doLogin()};
@@ -183,16 +208,20 @@ function drawInbox(){
     const last=c.msgs[c.msgs.length-1];
     const t=last?new Date(last.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
     const p=last?(last.sender===ADMIN?'Vous: ':'')+last.content.substring(0,40):'';
-    return `<div class="conv" onclick="openConv('${c.id}','${esc(c.name)}')"><div class="av" style="background:${colorFor(c.name)}">${c.name.charAt(0).toUpperCase()}</div><div class="ci"><div class="cn">${esc(c.name)}</div><div class="cp">${esc(p)}</div></div><div class="ct">${t}</div></div>`;
+    return `<div class="conv" onclick="openConv('${c.id}',this)" data-name="${esc(c.name)}"><div class="av" style="background:${colorFor(c.name)}">${c.name.charAt(0).toUpperCase()}</div><div class="ci"><div class="cn">${esc(c.name)}</div><div class="cp">${esc(p)}</div></div><div class="ct">${t}</div></div>`;
   }).join('');
+  // Store conv names in a map
+  window._convNames={};
+  convs.forEach(c=>{window._convNames[c.id]=c.name;});
 }
 
-function openConv(id,name){
-  curConv=id;curName=name;
+function openConv(id){
+  curConv=id;
+  curName=window._convNames[id]||id;
   document.getElementById('inbox').style.display='none';
   document.getElementById('chat').classList.add('show');
   document.getElementById('backBtn').classList.add('show');
-  document.getElementById('hTitle').textContent=name;
+  document.getElementById('hTitle').textContent=curName;
   drawChat();
   document.getElementById('aInput').focus();
 }
@@ -219,10 +248,41 @@ function drawChat(){
     let inner='';
     if(!isAdmin)inner+='<div class="b-sender" style="color:'+colorFor(m.sender)+'">'+esc(m.sender)+'</div>';
     inner+='<div>'+esc(m.content)+'</div><span class="b-time">'+t+'</span>';
+    inner+='<button class="b-del" onclick="askDel(\''+m.id+'\')" title="Supprimer">×</button>';
     html+='<div class="r '+(isAdmin?'me':'them')+'"><div class="b">'+inner+'</div></div>';
   });
   c.innerHTML=html;
   c.scrollTop=c.scrollHeight;
+}
+
+// Delete message
+function askDel(msgId){
+  delMsgId=msgId;
+  document.getElementById('delModal').classList.add('show');
+}
+function closeDelModal(){
+  delMsgId=null;
+  document.getElementById('delModal').classList.remove('show');
+}
+async function confirmDel(){
+  if(!delMsgId)return;
+  const id=delMsgId;
+  closeDelModal();
+  toast('Suppression...');
+  try{
+    const r=await fetch(API+'?id='+encodeURIComponent(id),{method:'DELETE'});
+    const d=await r.json();
+    if(d.success){
+      allMsgs=allMsgs.filter(m=>m.id!==id);
+      drawChat();
+      drawInbox();
+      toast('Message supprimé');
+    }else{
+      toast('Erreur suppression');
+    }
+  }catch(e){
+    toast('Erreur');
+  }
 }
 
 async function aSend(){
