@@ -136,7 +136,17 @@ body{background:#0a0e1a;color:#fff}
 <script>
 const API_URL='https://base44.app/api/apps/6a10802fc1e2a32a74055143/functions/hiddenChat';
 const SECRET_CODE='00004444';
-let currentUser=null,conversationId=null,messages=[],pollInterval=null,mediaRecorder=null,audioChunks=[],isRecording=false;
+let userName=null,sessionId=null,messages=[],pollInterval=null,mediaRecorder=null,audioChunks=[],isRecording=false;
+
+// Generate unique session ID (like a phone number for this device)
+function getOrCreateSessionId(){
+  let id=localStorage.getItem('gt_session');
+  if(!id){
+    id='s_'+Date.now()+'_'+Math.random().toString(36).substring(2,10);
+    localStorage.setItem('gt_session',id);
+  }
+  return id;
+}
 
 function initFrontPage(){
   const players=[{name:'Erling Haaland',team:'Manchester City',goals:19},{name:'Mohamed Salah',team:'Liverpool',goals:15},{name:'Kylian Mbappé',team:'Real Madrid',goals:14},{name:'Harry Kane',team:'Bayern Munich',goals:13},{name:'Bukayo Saka',team:'Arsenal',goals:11},{name:'Ollie Watkins',team:'Aston Villa',goals:10},{name:'Alexander Isak',team:'Newcastle',goals:9},{name:'Cole Palmer',team:'Chelsea',goals:9},{name:'Heung-min Son',team:'Tottenham',goals:8},{name:'Phil Foden',team:'Manchester City',goals:7}];
@@ -151,8 +161,12 @@ function handleSearch(){
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.activeElement.id==='searchInput')handleSearch()});
 
 function initName(){
-  const saved=localStorage.getItem('gt_user');
-  if(saved){currentUser=saved;conversationId=saved;showChat();return}
+  // Check if already logged in (has name + session)
+  const savedName=localStorage.getItem('gt_user_name');
+  const savedSession=localStorage.getItem('gt_session');
+  if(savedName&&savedSession){userName=savedName;sessionId=savedSession;showChat();return}
+  // Generate session ID now so it's ready
+  sessionId=getOrCreateSessionId();
   const input=document.getElementById('nameInput'),btn=document.getElementById('nameBtn');
   input.addEventListener('input',()=>{btn.disabled=input.value.trim().length<2});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&input.value.trim().length>=2)doNameLogin()});
@@ -162,12 +176,17 @@ function initName(){
 function doNameLogin(){
   const name=document.getElementById('nameInput').value.trim();
   if(name.length<2)return;
-  currentUser=name;conversationId=name;
-  localStorage.setItem('gt_user',name);
+  userName=name;
+  sessionId=getOrCreateSessionId();
+  localStorage.setItem('gt_user_name',name);
   showChat();
 }
 function doLogout(){
-  localStorage.removeItem('gt_user');currentUser=null;conversationId=null;
+  // Clear name but keep session ID (so next login creates new conversation with same device ID... actually no, generate new session on logout)
+  localStorage.removeItem('gt_user_name');
+  // Generate fresh session so next login is a clean conversation
+  localStorage.removeItem('gt_session');
+  userName=null;sessionId=null;
   if(pollInterval)clearInterval(pollInterval);
   document.getElementById('chatScreen').classList.remove('active');
   document.getElementById('nameScreen').style.display='flex';
@@ -177,14 +196,14 @@ function colorFor(name){const c=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf
 function showChat(){
   document.getElementById('nameScreen').style.display='none';
   document.getElementById('chatScreen').classList.add('active');
-  const av=document.getElementById('chatAvatar');av.textContent=currentUser.charAt(0).toUpperCase();av.style.background=colorFor(currentUser);
-  document.getElementById('chatName').textContent=currentUser;
+  const av=document.getElementById('chatAvatar');av.textContent=userName.charAt(0).toUpperCase();av.style.background=colorFor(userName);
+  document.getElementById('chatName').textContent=userName;
   fetchMessages();pollInterval=setInterval(fetchMessages,3000);
   document.getElementById('msgInput').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
 }
 async function fetchMessages(){
   try{
-    const res=await fetch(API_URL+'?conversation_id='+encodeURIComponent(conversationId));
+    const res=await fetch(API_URL+'?conversation_id='+encodeURIComponent(sessionId));
     const data=await res.json();
     if(data.messages){messages=data.messages;renderMessages()}
   }catch(e){console.error('Fetch error:',e)}
@@ -194,7 +213,7 @@ function renderMessages(){
   if(messages.length===0){c.innerHTML='<div style="text-align:center;padding:40px;color:#555;font-size:14px">Aucun message. Écrivez à l\'admin! 👋</div>';return}
   messages.forEach(msg=>{
     const isAdmin=msg.sender==='Admin';
-    const isMe=msg.sender===currentUser;
+    const isMe=msg.sender===userName;
     const b=document.createElement('div');
     b.className=isMe?'msg-bubble me':'msg-bubble admin';
     const time=new Date(msg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -215,7 +234,7 @@ async function sendMessage(){
   const input=document.getElementById('msgInput'),text=input.value.trim();
   if(!text)return;input.value='';input.style.height='auto';
   try{
-    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:text,msgType:'text',conversationId:conversationId})});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:userName,content:text,msgType:'text',conversationId:sessionId})});
     await fetchMessages();
   }catch(e){showToast('Erreur d\'envoi')}
 }
@@ -229,7 +248,7 @@ async function handleFileUpload(file,type){
     const fd=new FormData();fd.append('file',file);
     const ur=await fetch('https://base44.app/api/apps/6a10802fc1e2a32a74055143/upload',{method:'POST',body:fd});
     const ud=await ur.json();const fu=ud.file_url||ud.url||'';
-    if(fu){await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:file.name,msgType:type,fileUrl:fu,conversationId:conversationId})});await fetchMessages();showToast('Envoyé')}
+    if(fu){await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:userName,content:file.name,msgType:type,fileUrl:fu,conversationId:sessionId})});await fetchMessages();showToast('Envoyé')}
     else showToast('Erreur upload')
   }catch(e){showToast('Erreur')}
 }
@@ -237,7 +256,7 @@ function getLocation(){
   if(!navigator.geolocation){showToast('Non supporté');return}
   showToast('Localisation...');
   navigator.geolocation.getCurrentPosition(async pos=>{
-    try{await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:'Ma position',msgType:'location',locationLat:pos.coords.latitude,locationLng:pos.coords.longitude,conversationId:conversationId})});await fetchMessages();showToast('Position envoyée')}catch(e){showToast('Erreur')}
+    try{await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:userName,content:'Ma position',msgType:'location',locationLat:pos.coords.latitude,locationLng:pos.coords.longitude,conversationId:sessionId})});await fetchMessages();showToast('Position envoyée')}catch(e){showToast('Erreur')}
   },()=>showToast('Refusé'),{enableHighAccuracy:true});
 }
 async function toggleRecording(){if(isRecording)stopRecording();else startRecording()}
@@ -250,7 +269,7 @@ async function startRecording(){
     mediaRecorder.onstop=async()=>{
       const ab=new Blob(audioChunks,{type:'audio/webm'});const dur=Math.round((Date.now()-st)/1000);
       const fd=new FormData();fd.append('file',ab,'voice.webm');
-      try{const ur=await fetch('https://base44.app/api/apps/6a10802fc1e2a32a74055143/upload',{method:'POST',body:fd});const ud=await ur.json();const fu=ud.file_url||ud.url||'';if(fu){await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:dur+'s',msgType:'voice',fileUrl:fu,conversationId:conversationId})});await fetchMessages();showToast('Vocal envoyé')}}catch(e){showToast('Erreur')}
+      try{const ur=await fetch('https://base44.app/api/apps/6a10802fc1e2a32a74055143/upload',{method:'POST',body:fd});const ud=await ur.json();const fu=ud.file_url||ud.url||'';if(fu){await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:userName,content:dur+'s',msgType:'voice',fileUrl:fu,conversationId:sessionId})});await fetchMessages();showToast('Vocal envoyé')}}catch(e){showToast('Erreur')}
       stream.getTracks().forEach(t=>t.stop());
     };
     mediaRecorder.start();isRecording=true;
